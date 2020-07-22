@@ -1,0 +1,22 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Locksmith", "Locksmith.csproj", "{5F719C61-5472-4B64-ABED-FDB6BE737C7A}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Tests", "Tests\Tests.csproj", "{D96F9C90-D113-4D60-9694-98EB731536AF}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{5F719C61-5472-4B64-ABED-FDB6BE737C7A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{5F719C61-5472-4B64-ABED-FDB6BE737C7A}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{5F719C61-5472-4B64-ABED-FDB6BE737C7A}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{5F719C61-5472-4B64-ABED-FDB6BE737C7A}.Release|Any CPU.Build.0 = Release|Any CPU
+		{D96F9C90-D113-4D60-9694-98EB731536AF}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{D96F9C90-D113-4D60-9694-98EB731536AF}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{D96F9C90-D113-4D60-9694-98EB731536AF}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{D96F9C90-D113-4D60-9694-98EB731536AF}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+EndGlobal

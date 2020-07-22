@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>netstandard2.0</TargetFramework>
+        <RootNamespace>Dextarius</RootNamespace>
+    </PropertyGroup>
+
+    <ItemGroup>
+      <None Remove=".gitignore" />
+      <None Remove="Tests\**" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <Compile Remove="Tests\**" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <EmbeddedResource Remove="Tests\**" />
+    </ItemGroup>
+
+</Project>
