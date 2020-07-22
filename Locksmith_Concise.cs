@@ -17,12 +17,12 @@ namespace Dextarius
         private static class Mask
         {
             internal const int   
-                WriteLockState                          =  0b0000_0000_0100_0000_0000_0000_0000_0000,
-                UpgradeReservation                      =  0b0000_0000_0010_0000_0000_0000_0000_0000,
-                WriteReservation                        =  0b0000_0000_0001_0000_0000_0000_0000_0000,
-                WaitingWriterCount                      =  0b0000_0000_0000_1111_1111_0000_0000_0000,
-                WaitingReaders                          =  0b0000_0000_0000_0000_0000_1000_0000_0000, 
-                ActiveReaderCount                       =  0b0000_0000_0000_0000_0000_0111_1111_1111,
+                WriteLockState                          =  0b0100_0000_0000_0000_0000_0000_0000_0000,
+                UpgradeReservation                      =  0b0010_0000_0000_0000_0000_0000_0000_0000,
+                WriteReservation                        =  0b0001_0000_0000_0000_0000_0000_0000_0000,
+                WaitingWriterCount                      =  0b0000_1111_1111_0000_0000_0000_0000_0000,
+                WaitingReaders                          =  0b0000_0000_0000_1000_0000_0000_0000_0000, 
+                ActiveReaderCount                       =  0b0000_0000_0000_0111_1111_1111_1111_1111,
                 ExcludeWriteReservation                 =  ~WriteReservation,
                 WriteLockedOrActiveReaders              =   WriteLockState   | ActiveReaderCount,
                 ExcludeReservationsAndActiveReaderCount = ~(WriteReservation | UpgradeReservation | ActiveReaderCount);

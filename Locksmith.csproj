@@ -6,16 +6,18 @@
     </PropertyGroup>
 
     <ItemGroup>
-      <None Remove=".gitignore" />
       <None Remove="Tests\**" />
+      <None Remove=".idea\**" />
     </ItemGroup>
 
     <ItemGroup>
       <Compile Remove="Tests\**" />
+      <Compile Remove=".idea\**" />
     </ItemGroup>
 
     <ItemGroup>
       <EmbeddedResource Remove="Tests\**" />
+      <EmbeddedResource Remove=".idea\**" />
     </ItemGroup>
 
 </Project>
