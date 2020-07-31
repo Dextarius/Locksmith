@@ -73,19 +73,21 @@ namespace Dextarius
                 ActiveReaderCount                       =  0b0000_0000_0000_0111_1111_1111_1111_1111,
                 ExcludeWriteReservation                 =  ~WriteReservation,
                 WriteLockedOrActiveReaders              =   WriteLockState   | ActiveReaderCount,
+                ActiveReadersAndWriteReservation        =   WriteReservation | ActiveReaderCount,
                 ExcludeReservationsAndActiveReaderCount = ~(WriteReservation | UpgradeReservation | ActiveReaderCount);
         }
         
         private static class State
         {
             internal const int 
-                None               = 0,
-                WriteLockActive    = Mask.WriteLockState, 
-                ReservedForUpgrade = Mask.UpgradeReservation,
-                ReservedForWriter  = Mask.WriteReservation,
-                MaxWaitingWriters  = Mask.WaitingWriterCount, 
-                MaxActiveReaders   = Mask.ActiveReaderCount, 
-                ReadersAreWaiting  = Mask.WaitingReaders,
+                None                             = 0,
+                WriteLockActive                  = Mask.WriteLockState, 
+                ReservedForUpgrade               = Mask.UpgradeReservation,
+                ReservedForWriter                = Mask.WriteReservation,
+                MaxWaitingWriters                = Mask.WaitingWriterCount, 
+                MaxActiveReaders                 = Mask.ActiveReaderCount, 
+                ReadersAreWaiting                = Mask.WaitingReaders,
+                WriteReservedAndOneActiveReader  = Mask.WriteReservation | OneActiveReader, 
                 
                 //- As long as we don't change the order of the flags, we can change
                 // the number of bits in the flags and these should stay up to date
@@ -97,7 +99,8 @@ namespace Dextarius
 
         #region Fields
 
-        private static int maxWaitTime = 10_000;
+        private static int _monitorEnterTimeout = 10_000;
+        private static int _monitorWaitTimeout  = 10_000;
 
         #endregion
         
@@ -106,17 +109,26 @@ namespace Dextarius
 
         public static int MaxNumberOfWaitingWriters => State.MaxWaitingWriters / State.OneWaitingWriter;
         public static int MaxNumberOfActiveReaders  => State.MaxActiveReaders;
+        
+        //- TODO : This may need to be revised.  At the current time we do use lock statements
+        //  which don't set a max timeout.  We should avoid a situation where it's ambiguous whether
+        //  the timeout applies to lock statements used in the methods as well.
+        internal static int MonitorEnterTimeout
+        {
+            get => _monitorEnterTimeout;
+            set => Interlocked.Exchange(ref _monitorEnterTimeout, value);
+        }
 
         /// <summary>
         ///     Controls the maximum amount of time a thread will wait for a notification before
         ///     waking up and trying to acquire the lock again.  The default is 10,000 milliseconds.
         /// </summary>
-        internal static int MaxWaitTime
+        internal static int MonitorWaitTimeout
         {
-            get => maxWaitTime;
-            set => Interlocked.Exchange(ref maxWaitTime, value);
+            get => _monitorWaitTimeout;
+            set => Interlocked.Exchange(ref _monitorWaitTimeout, value);
         }
-
+        
         #endregion
         
         
@@ -275,7 +287,7 @@ namespace Dextarius
                                 //  may come right after and reserve the lock, or anything else that would normally
                                 //  prevent a reader from entering.  So we may have to start the waiting process over.
                                 
-                                Monitor.Wait(readLockObject, MaxWaitTime);
+                                Monitor.Wait(readLockObject, MonitorWaitTimeout);
                             }
                             
                             //- The above '((lockState & Mask.WaitingReaders)  ==  State.ReadersAreWaiting)' check
@@ -387,7 +399,7 @@ namespace Dextarius
             //  the case, because that can only be done by the last reader, which is us), a
             //  waiting writer, or an entering/spinning writer.
             //- If no writers are waiting, then it's just a spinning writer waiting for us to leave.
-            if (((formerState & Mask.ActiveReaderCount) == State.OneActiveReader) &&
+            if (((formerState & Mask.ActiveReadersAndWriteReservation)  ==  State.WriteReservedAndOneActiveReader) && 
                  (formerState > (State.ReservedForWriter + State.OneWaitingWriter)))
             {
 #if DEBUG
@@ -612,7 +624,8 @@ namespace Dextarius
                         //  We don't have to worry about an exiting thread calling Pulse() in the time between
                         //  when we set the waiting writer count, and when we call Wait(), because Pulse() can't
                         //  be called without the lock that we're holding.
-                        while (((formerState = lockState) & Mask.WriteLockedOrActiveReaders)  !=  State.None)
+                        while ((((formerState = lockState) & Mask.WriteLockedOrActiveReaders) !=  State.None) && 
+                                 (formerState              & Mask.WaitingWriterCount)         != State.MaxWaitingWriters)
                         {
                             newState = (formerState + State.OneWaitingWriter);
 
@@ -629,7 +642,7 @@ namespace Dextarius
                                 newState.AssertHasSameNumberOfActiveReadersAs(formerState);
 #endif
                                 //- We'll wait for whoever is using the lock to wake us up.
-                                Monitor.Wait(writeLockObject, MaxWaitTime);
+                                Monitor.Wait(writeLockObject, MonitorWaitTimeout);
 
                                 //- TODO : If we time out, we should probably try to acquire the lock one last time if we're the last waiting writer.
                                 //         That way if the lock is reserved we won't leave it in that state by exiting.
@@ -783,14 +796,15 @@ namespace Dextarius
                         //  count can't change while we hold the lock, we can just keep attempting to exchange the lockState
                         //  until it succeeds.   
                         formerState = lockState;
-                        newState    = formerState + (State.ReservedForWriter - State.WriteLockActive);
+                        newState    = formerState ^ (State.ReservedForWriter | State.WriteLockActive);
+                        //- Nothing reserves during a write lock, so this should flip both bits
 
                         if (formerState >= (State.WriteLockActive + State.OneWaitingWriter))
                         {
                             while (Interlocked.CompareExchange(ref lockState, newState,formerState)  !=  formerState)
                             {
                                 formerState = lockState;
-                                newState    = formerState + (State.ReservedForWriter - State.WriteLockActive);
+                                newState     = formerState ^ (State.ReservedForWriter | State.WriteLockActive);
                             }
 #if DEBUG
                             newState.AssertWriteLockFlag_Off();

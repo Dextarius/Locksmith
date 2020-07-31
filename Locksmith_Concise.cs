@@ -14,7 +14,7 @@ namespace Dextarius
         private const int Long_Sleep_Duration = 10;
         private const int Number_Of_Spins     = 15;
         
-        private static class Mask
+private static class Mask
         {
             internal const int   
                 WriteLockState                          =  0b0100_0000_0000_0000_0000_0000_0000_0000,
@@ -25,28 +25,32 @@ namespace Dextarius
                 ActiveReaderCount                       =  0b0000_0000_0000_0111_1111_1111_1111_1111,
                 ExcludeWriteReservation                 =  ~WriteReservation,
                 WriteLockedOrActiveReaders              =   WriteLockState   | ActiveReaderCount,
+                ActiveReadersAndWriteReservation        =   WriteReservation | ActiveReaderCount,
                 ExcludeReservationsAndActiveReaderCount = ~(WriteReservation | UpgradeReservation | ActiveReaderCount);
         }
         
         private static class State
         {
             internal const int 
-                None               = 0,
-                WriteLockActive    = Mask.WriteLockState, 
-                ReservedForUpgrade = Mask.UpgradeReservation,
-                ReservedForWriter  = Mask.WriteReservation,
-                MaxWaitingWriters  = Mask.WaitingWriterCount, 
-                MaxActiveReaders   = Mask.ActiveReaderCount, 
-                ReadersAreWaiting  = Mask.WaitingReaders,
-                OneActiveReader    = (Mask.WaitingReaders - MaxActiveReaders), 
-                OneWaitingWriter   = (Mask.WaitingReaders + Mask.ActiveReaderCount + 1);
+                None                             = 0,
+                WriteLockActive                  = Mask.WriteLockState, 
+                ReservedForUpgrade               = Mask.UpgradeReservation,
+                ReservedForWriter                = Mask.WriteReservation,
+                MaxWaitingWriters                = Mask.WaitingWriterCount, 
+                MaxActiveReaders                 = Mask.ActiveReaderCount, 
+                ReadersAreWaiting                = Mask.WaitingReaders,
+                WriteReservedAndOneActiveReader  = Mask.WriteReservation | OneActiveReader,
+                OneActiveReader                  = (Mask.WaitingReaders  - MaxActiveReaders), 
+                OneWaitingWriter                 = (Mask.WaitingReaders  + Mask.ActiveReaderCount + 1);
         }
+        
 
         #endregion
 
         #region Fields
 
-        private static int maxWaitTime = 10_000;
+        private static int _monitorEnterTimeout = 10_000;
+        private static int _monitorWaitTimeout  = 10_000;
 
         #endregion
         
@@ -56,13 +60,19 @@ namespace Dextarius
         public static int MaxNumberOfWaitingWriters => State.MaxWaitingWriters / State.OneWaitingWriter;
         public static int MaxNumberOfActiveReaders  => State.MaxActiveReaders;
 
+        internal static int MonitorEnterTimeout
+        {
+            get => _monitorEnterTimeout;
+            set => Interlocked.Exchange(ref _monitorEnterTimeout, value);
+        }
 
         //- Controls the maximum amount of time a thread will wait during Monitor.Wait()
-        internal static int MaxWaitTime
+        internal static int MonitorWaitTimeout
         {
-            get => maxWaitTime;
-            set => Interlocked.Exchange(ref maxWaitTime, value);
+            get => _monitorWaitTimeout;
+            set => Interlocked.Exchange(ref _monitorWaitTimeout, value);
         }
+        
 
         #endregion
         
@@ -112,7 +122,7 @@ namespace Dextarius
                             {
                                 spinCount = 0;
 
-                                Monitor.Wait(readLockObject, MaxWaitTime);
+                                Monitor.Wait(readLockObject, MonitorWaitTimeout);
                             }
                         }
                     }
@@ -146,8 +156,8 @@ namespace Dextarius
             } 
             while (Interlocked.CompareExchange(ref lockState, newState, formerState) != formerState);
             
-            if (((formerState & Mask.ActiveReaderCount) == State.OneActiveReader) &&
-                 (formerState > (State.ReservedForWriter + State.OneWaitingWriter)))
+            if (((formerState & Mask.ActiveReadersAndWriteReservation)  ==  State.WriteReservedAndOneActiveReader) && 
+                (formerState > (State.ReservedForWriter + State.OneWaitingWriter)))
             {
                 lock (writeLockObject)
                 {
@@ -225,14 +235,15 @@ namespace Dextarius
                     //- Since there is a wait slot available, if we can claim it...
                     lock (writeLockObject)
                     {
-                        while (((formerState = lockState) & Mask.WriteLockedOrActiveReaders)  !=  State.None)
+                        while ((((formerState = lockState) & Mask.WriteLockedOrActiveReaders) !=  State.None) && 
+                                 (formerState              & Mask.WaitingWriterCount)         != State.MaxWaitingWriters) //- added
                         {
                             newState = (formerState + State.OneWaitingWriter);
 
                             if (Interlocked.CompareExchange(ref lockState, newState, formerState)  ==  formerState)
                             {
                                 //- We'll wait for whoever is using the lock to wake us up.
-                                Monitor.Wait(writeLockObject, MaxWaitTime);
+                                Monitor.Wait(writeLockObject, MonitorWaitTimeout);
                                 
                                 do
                                 {
@@ -301,14 +312,14 @@ namespace Dextarius
                     lock (writeLockObject)
                     {
                         formerState = lockState;
-                        newState    = formerState + (State.ReservedForWriter - State.WriteLockActive);
+                        newState    = formerState ^ (State.ReservedForWriter | State.WriteLockActive);
 
                         if (formerState >= (State.WriteLockActive + State.OneWaitingWriter))
                         {
                             while (Interlocked.CompareExchange(ref lockState, newState,formerState)  !=  formerState)
                             {
                                 formerState = lockState;
-                                newState    = formerState + (State.ReservedForWriter - State.WriteLockActive);
+                                newState = formerState ^ (State.ReservedForWriter | State.WriteLockActive);
                             }
                             
                             Monitor.Pulse(writeLockObject);
